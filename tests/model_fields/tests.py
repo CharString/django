@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 import unittest
 import warnings
+import re
 
 from django import test
 from django import forms
@@ -23,7 +24,7 @@ from django.utils.functional import lazy
 from .models import (
     Foo, Bar, Whiz, BigD, BigS, BigInt, Post, NullBooleanModel,
     BooleanModel, PrimaryKeyCharModel, DataModel, Document, RenamedField,
-    VerboseNameField, FksToBooleans, FkToChar)
+    VerboseNameField, FksToBooleans, FkToChar, Baz)
 
 
 class BasicFieldTests(test.TestCase):
@@ -139,6 +140,11 @@ class DecimalFieldTests(test.TestCase):
         Foo.objects.filter(d__gte=100000000000)
 
 
+class BazForm(forms.ModelForm):
+    class Meta:
+        model = Baz
+
+
 class ForeignKeyTests(test.TestCase):
     def test_callable_default(self):
         """Test the use of a lazy callable for ForeignKey.default"""
@@ -156,6 +162,30 @@ class ForeignKeyTests(test.TestCase):
         fk_model_empty = FkToChar.objects.create(out=char_model_empty)
         fk_model_empty = FkToChar.objects.select_related('out').get(id=fk_model_empty.pk)
         self.assertEqual(fk_model_empty.out, char_model_empty)
+
+    def test_distinct_choice_limit(self):
+        """Doesn't make sense to offer the same ForeignKey multiple times in a form"""
+        a = Foo.objects.create(a='a', d=Decimal("-1"))
+        b = Foo.objects.create(a='b', d=Decimal("1"))
+        Bar.objects.create(b='ah', a=a)
+        Bar.objects.create(b='aha', a=a)
+        Bar.objects.create(b='bla', a=b)
+        form = BazForm()
+        fk_field = str(form['foo'])
+        self.assertEqual(len(re.findall(r'value="%s"' % b.pk, fk_field)), 0)
+        self.assertEqual(len(re.findall(r'value="%s"' % a.pk, fk_field)), 1)
+
+    def test_distinct_choice_limit_save(self):
+        """Doesn't make sense to offer the same ForeignKey multiple times in a form"""
+        a = Foo.objects.create(a='a', d=Decimal("-1"))
+        b = Foo.objects.create(a='b', d=Decimal("1"))
+        Bar.objects.create(b='ah', a=a)
+        Bar.objects.create(b='aha', a=a)
+        Bar.objects.create(b='bla', a=b)
+        form = BazForm({'foo': a.pk, 'a': 'a'})
+        self.assertTrue(form.is_valid())
+        obj = form.save()
+        self.assertEqual(obj.foo.pk, a.pk)
 
 
 class DateTimeFieldTests(unittest.TestCase):
