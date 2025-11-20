@@ -44,6 +44,8 @@ class SQLInsertCompiler(BaseSQLInsertCompiler):
                 not in self.connection.data_types
                 for field in fields
             )
+            # super() handles field.get_placeholder; we don't deal with those
+            or any(hasattr(field, "get_placeholder") for field in fields)
             # Compilable cannot be combined in an array of literal values.
             or any(any(hasattr(value, "as_sql") for value in row) for row in value_rows)
         ):
